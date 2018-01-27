@@ -131,15 +131,24 @@ namespace Microsoft.Toolkit.Uwp.UI.Animations
                 return;
             }
 
-            var props = new ConnectedAnimationProperties()
+            if (!_connectedAnimationsProps.TryGetValue(key, out var props))
             {
-                Key = key,
-                IsListAnimation = true,
-                ElementName = elementName,
-                ListViewBase = listViewBase
-            };
+                props = new ConnectedAnimationProperties
+                {
+                    Key = key,
+                    ListAnimProperties = new List<ConnectedAnimationListProperty>()
+                };
+                _connectedAnimationsProps[key] = props;
+            }
 
-            _connectedAnimationsProps[key] = props;
+            if (!props.ListAnimProperties.Any(lap => lap.ListViewBase == listViewBase && lap.ElementName == elementName))
+            {
+                props.ListAnimProperties.Add(new ConnectedAnimationListProperty
+                {
+                    ElementName = elementName,
+                    ListViewBase = listViewBase
+                });
+            }
         }
 
         /// <summary>
@@ -155,7 +164,25 @@ namespace Microsoft.Toolkit.Uwp.UI.Animations
                 return;
             }
 
-            _connectedAnimationsProps.Remove(key);
+            if (_connectedAnimationsProps.TryGetValue(key, out var prop))
+            {
+                if (!prop.IsListAnimation)
+                {
+                    _connectedAnimationsProps.Remove(key);
+                }
+                else
+                {
+                    var listAnimProperty = prop.ListAnimProperties.FirstOrDefault(lap => lap.ListViewBase == listViewBase);
+                    if (listAnimProperty != null)
+                    {
+                        prop.ListAnimProperties.Remove(listAnimProperty);
+                        if (prop.ListAnimProperties.Count == 0)
+                        {
+                            _connectedAnimationsProps.Remove(key);
+                        }
+                    }
+                }
+            }
         }
 
         private void Frame_Navigating(object sender, Windows.UI.Xaml.Navigation.NavigatingCancelEventArgs e)
@@ -167,7 +194,14 @@ namespace Microsoft.Toolkit.Uwp.UI.Animations
             {
                 if (props.IsListAnimation && parameter != null && ApiInformationHelper.IsCreatorsUpdateOrAbove)
                 {
-                    props.ListViewBase.PrepareConnectedAnimation(props.Key, e.Parameter, props.ElementName);
+                    foreach (var listAnimProperty in props.ListAnimProperties)
+                    {
+                        if (listAnimProperty.ListViewBase.ItemsSource is IEnumerable<object> items &&
+                            items.Contains(e.Parameter))
+                        {
+                            listAnimProperty.ListViewBase.PrepareConnectedAnimation(props.Key, e.Parameter, listAnimProperty.ElementName);
+                        }
+                    }
                 }
                 else if (!props.IsListAnimation)
                 {
@@ -215,27 +249,39 @@ namespace Microsoft.Toolkit.Uwp.UI.Animations
                 foreach (var props in _connectedAnimationsProps.Values)
                 {
                     var connectedAnimation = cas.GetAnimation(props.Key);
-                    var animationHandled = false;
                     if (connectedAnimation != null)
                     {
                         if (props.IsListAnimation && parameter != null && ApiInformationHelper.IsCreatorsUpdateOrAbove)
                         {
-                            props.ListViewBase.ScrollIntoView(parameter);
-
-                            // give time to the UI thread to scroll the list
-                            var t = props.ListViewBase.Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, async () =>
+                            foreach (var listAnimProperty in props.ListAnimProperties)
                             {
-                                try
+                                if (listAnimProperty.ListViewBase.ItemsSource is IEnumerable<object> items && items.Contains(e.Parameter))
                                 {
-                                    var success = await props.ListViewBase.TryStartConnectedAnimationAsync(connectedAnimation, parameter, props.ElementName);
-                                }
-                                catch (Exception)
-                                {
-                                    connectedAnimation.Cancel();
-                                }
-                            });
+                                    listAnimProperty.ListViewBase.ScrollIntoView(parameter);
 
-                            animationHandled = true;
+                                    // give time to the UI thread to scroll the list
+                                    var t = listAnimProperty.ListViewBase.Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, async () =>
+                                    {
+                                        try
+                                        {
+                                            var success = await listAnimProperty.ListViewBase.TryStartConnectedAnimationAsync(connectedAnimation, parameter, listAnimProperty.ElementName);
+                                        }
+                                        catch (Exception)
+                                        {
+                                            connectedAnimation.Cancel();
+                                        }
+                                    });
+
+                                    if (_previousPageConnectedAnimationProps.TryGetValue(props.Key, out var previousPageConnectedAnimationProp))
+                                    {
+                                        previousPageConnectedAnimationProp.ListAnimProperties.RemoveAll(lap => lap.ListViewBase == listAnimProperty.ListViewBase);
+                                        if (previousPageConnectedAnimationProp.ListAnimProperties.Count == 0)
+                                        {
+                                            _previousPageConnectedAnimationProps.Remove(props.Key);
+                                        }
+                                    }
+                                }
+                            }
                         }
                         else if (!props.IsListAnimation)
                         {
@@ -248,13 +294,11 @@ namespace Microsoft.Toolkit.Uwp.UI.Animations
                                 connectedAnimation.TryStart(props.Element);
                             }
 
-                            animationHandled = true;
+                            if (_previousPageConnectedAnimationProps.ContainsKey(props.Key))
+                            {
+                                _previousPageConnectedAnimationProps.Remove(props.Key);
+                            }
                         }
-                    }
-
-                    if (_previousPageConnectedAnimationProps.ContainsKey(props.Key) && animationHandled)
-                    {
-                        _previousPageConnectedAnimationProps.Remove(props.Key);
                     }
                 }
 
