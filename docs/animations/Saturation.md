@@ -1,7 +1,6 @@
 ---
 title: Saturation animation behavior
 author: nmetulev
-ms.date: 08/20/2017
 description: The Saturation animation behavior selectively saturates a XAML element.
 keywords: windows 10, uwp, uwp community toolkit, uwp toolkit, saturation animation, saturation
 ---
@@ -24,6 +23,7 @@ The Saturation animation selectively saturates a XAML element. Saturation animat
            Value="0" 
            Duration="2500" 
            Delay="250" 
+           EasingType="Linear"
            AutomaticallyStart="True"/>
 </interactivity:Interaction.Behaviors>
 ```
@@ -60,7 +60,7 @@ ToolkitLogo.Saturation(value: 0, duration: 500, delay: 250);
 
     ![Use Case 1 Output](../resources/images/Animations/Saturation/Use-Case-1.gif)
 
-- Use this to create chaining animations with other animations. Visit the [AnimationSet](\AnimationSet.md) documentation for more information.
+- Use this to create chaining animations with other animations. Visit the [AnimationSet](AnimationSet.md) documentation for more information.
 
     **Sample Code**
 
